@@ -186,7 +186,29 @@ async function ensureRepo(repoUrl, branch, localPath) {
     throw error;
   }
 }
+function isLensMissingBase64Content(jsonData) {
+  // Determine if the lens is missing base64 content and needs enhancement.
+  // Cases:
+  // - content is missing or not an array
+  // - content is an empty array
+  // - content has length === 1 and the single item has missing/empty data
+  // - content has multiple items but none have a non-empty string `data`
+  if (!jsonData.content || !Array.isArray(jsonData.content) || jsonData.content.length === 0) {
+    return true;
+  }
 
+  if (jsonData.content.length === 1) {
+    const item = jsonData.content[0];
+    if (!item || typeof item.data !== 'string' || item.data.length === 0) {
+      return true;
+    }
+    return false;
+  }
+
+  // length > 1: check if any item has non-empty string data
+  const hasAnyData = jsonData.content.some(c => c && typeof c.data === 'string' && c.data.length > 0);
+  return !hasAnyData;
+}
 /**
  * Discover and validate lenses from a git repository
  * @param {string} repoUrl - Git repository URL
@@ -241,7 +263,7 @@ async function discoverLenses(repoUrl, branch, lensFilePath, tempDir = '/tmp/len
             hasBase64: true,
             lens: jsonData
           });
-        } else if (jsonData.content && !Array.some(jsonData.content, (c) => c.data)) {
+        } else if (isLensMissingBase64Content(jsonData)) {
           // Lens is missing base64 but we might have an enhance function
           const fileDir = path.dirname(filePath);
           const enhanceFile = enhanceFiles[fileDir];
