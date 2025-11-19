@@ -1,0 +1,121 @@
+openapi: "3.0.1"
+info:
+  title: Gravitate Health Focusing Service API Interface
+  version: 2.0.0
+  description: Gravitate Health Focusing Service. Focuses a Focused ePI.
+  contact: {}
+servers:
+- url: https://fosps.gravitatehealth.eu
+paths:
+  /lenses:
+    get:
+      tags:
+      - Lenses
+      description: Returns all lenses IDs.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lenses:
+                    type: array
+                    items:
+                      type: string
+                    example: ["lens1", "lens2", "lens3"]
+
+  /lenses/{name}:
+    get:
+      tags:
+      - Lenses
+      description: Returns the lense itself.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  resourceType:
+                    type: string
+                    example: "Library"
+                  id:
+                    type: string
+                    example: "588"
+                  meta:
+                    type: object
+                  extension:
+                    type: array
+                    items:
+                      type: object
+                  url:
+                    type: string
+                    example: "http://hl7.eu/fhir/ig/gravitate-health/Library/mock-lib"
+                  identifier:
+                    type: array
+                    items:
+                      type: object
+                  version:
+                    type: string
+                    example: "0.0.1"
+                  name:
+                    type: string
+                    example: "pregnancy-lens"
+                  title:
+                    type: string
+                    example: "pregnancy-lens"
+                  status:
+                    type: string
+                    example: "draft"
+                  experimental:
+                    type: boolean
+                    example: true
+                  type:
+                    type: object
+                  date:
+                    type: string
+                    example: "2024-06-12T12:23:10.005Z"
+                  publisher:
+                    type: string
+                    example: "Gravitate Health Project - UPM Team"
+                  contact:
+                    type: array
+                    items:
+                      type: object
+                  description:
+                    type: string
+                    example: "Lens that highlight or collapses pregnancy related information"
+                  jurisdiction:
+                    type: array
+                    items:
+                      type: object
+                  purpose:
+                    type: string
+                    example: "Collapse or highlight pregnancy related information on a preprocessed ePI."
+                  usage:
+                    type: string
+                    example: "You can import this lens directly to your FHIR Server which suports Library Resource type."
+                  copiright:
+                    type: string
+                    example: "© 2024 Gravitate Health"
+                  parameter:
+                    type: array
+                    items:
+                      type: object
+                  content:
+                    type: array
+                    items:
+                      type: object
+
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The name of the lense to return.
+
+

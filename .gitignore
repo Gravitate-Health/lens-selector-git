@@ -1,0 +1,6 @@
+.env
+node_modules/
+/tmp/lens-repos/
+*.log
+.DS_Store
+dist/

@@ -1,0 +1,296 @@
+const fs = require('fs');
+const path = require('path');
+const axios = require('axios');
+const simpleGit = require('simple-git');
+
+/**
+ * FHIR Lens JSON Schema (simplified validation)
+ * Based on: https://build.fhir.org/ig/hl7-eu/gravitate-health/StructureDefinition-lens.html
+ */
+const FHIR_LENS_SCHEMA = {
+  type: 'object',
+  properties: {
+    resourceType: { type: 'string', enum: ['Library'] },
+    id: { type: 'string' },
+    url: { type: 'string' },
+    name: { type: 'string' },
+    status: { type: 'string' },
+    content: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          data: { type: 'string' } // base64 encoded
+        }
+      }
+    }
+  },
+  required: ['resourceType', 'id', 'url', 'name', 'status', 'content']
+};
+
+/**
+ * Validates if a JSON object conforms to FHIR Lens profile
+ * @param {Object} lens - The lens object to validate
+ * @returns {Object} { isValid: boolean, errors: string[] }
+ */
+function validateFHIRLens(lens) {
+  const errors = [];
+
+  if (!lens || typeof lens !== 'object') {
+    return { isValid: false, errors: ['Lens must be a JSON object'] };
+  }
+
+  if (lens.resourceType !== 'Library') {
+    errors.push('resourceType must be "Library"');
+  }
+
+  if (!lens.id || typeof lens.id !== 'string') {
+    errors.push('id is required and must be a string');
+  }
+
+  if (!lens.url || typeof lens.url !== 'string') {
+    errors.push('url is required and must be a string');
+  }
+
+  if (!lens.name || typeof lens.name !== 'string') {
+    errors.push('name is required and must be a string');
+  }
+
+  if (!lens.status || typeof lens.status !== 'string') {
+    errors.push('status is required and must be a string');
+  }
+
+  if (!Array.isArray(lens.content)) {
+    errors.push('content must be an array');
+  } else {
+    let hasBase64Content = false;
+    for (const item of lens.content) {
+      if (item.data && typeof item.data === 'string') {
+        hasBase64Content = true;
+        break;
+      }
+    }
+    if (!hasBase64Content) {
+      errors.push('content must include at least one item with base64 encoded data');
+    }
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+}
+
+/**
+ * Recursively find all JSON files in a directory
+ * @param {string} dir - Directory to search
+ * @returns {string[]} Array of file paths
+ */
+function findJsonFiles(dir) {
+  const jsonFiles = [];
+
+  function traverse(currentDir) {
+    const files = fs.readdirSync(currentDir);
+
+    for (const file of files) {
+      const filePath = path.join(currentDir, file);
+      const stat = fs.statSync(filePath);
+
+      if (stat.isDirectory()) {
+        traverse(filePath);
+      } else if (path.extname(file) === '.json') {
+        jsonFiles.push(filePath);
+      }
+    }
+  }
+
+  traverse(dir);
+  return jsonFiles;
+}
+
+/**
+ * Find JavaScript files with an enhance function
+ * @param {string} dir - Directory to search
+ * @returns {Object} Map of dir path to js file path
+ */
+function findEnhanceFiles(dir) {
+  const enhanceFiles = {};
+
+  function traverse(currentDir) {
+    const files = fs.readdirSync(currentDir);
+
+    for (const file of files) {
+      const filePath = path.join(currentDir, file);
+      const stat = fs.statSync(filePath);
+
+      if (stat.isDirectory()) {
+        traverse(filePath);
+      } else if (path.extname(file) === '.js') {
+        try {
+          const content = fs.readFileSync(filePath, 'utf8');
+          if (content.includes('function enhance') || content.includes('const enhance') || content.includes('export.*enhance')) {
+            enhanceFiles[path.dirname(filePath)] = filePath;
+          }
+        } catch (e) {
+          // Skip files that can't be read
+        }
+      }
+    }
+  }
+
+  traverse(dir);
+  return enhanceFiles;
+}
+
+/**
+ * Convert JavaScript file content to base64
+ * @param {string} filePath - Path to the JS file
+ * @returns {string} Base64 encoded content
+ */
+function jsToBase64(filePath) {
+  const content = fs.readFileSync(filePath, 'utf8');
+  return Buffer.from(content).toString('base64');
+}
+
+/**
+ * Clone or update a git repository
+ * @param {string} repoUrl - Git repository URL
+ * @param {string} branch - Branch or tag name (optional, defaults to main/master)
+ * @param {string} localPath - Local path to clone to
+ * @returns {Promise<void>}
+ */
+async function ensureRepo(repoUrl, branch, localPath) {
+  const git = simpleGit();
+
+  try {
+    if (fs.existsSync(localPath)) {
+      // Update existing repo
+      const repoGit = simpleGit(localPath);
+      await repoGit.fetch('origin');
+      if (branch) {
+        await repoGit.checkout(branch);
+      } else {
+        await repoGit.checkout(['main']).catch(() => repoGit.checkout('master'));
+      }
+      await repoGit.pull('origin');
+    } else {
+      // Clone new repo
+      if (branch) {
+        await git.clone(repoUrl, localPath, ['--branch', branch, '--single-branch']);
+      } else {
+        await git.clone(repoUrl, localPath);
+      }
+    }
+  } catch (error) {
+    console.error(`Error managing repository ${repoUrl}:`, error.message);
+    throw error;
+  }
+}
+
+/**
+ * Discover and validate lenses from a git repository
+ * @param {string} repoUrl - Git repository URL
+ * @param {string} branch - Branch or tag name (optional)
+ * @param {string} lensFilePath - Optional path to specific lens file within repo
+ * @param {string} tempDir - Temporary directory for git operations
+ * @returns {Promise<Array>} Array of valid lenses with metadata
+ */
+async function discoverLenses(repoUrl, branch, lensFilePath, tempDir = '/tmp/lens-repos') {
+  const repoName = repoUrl.split('/').pop().replace('.git', '');
+  const localPath = path.join(tempDir, repoName);
+
+  try {
+    // Ensure repository is cloned/updated
+    await ensureRepo(repoUrl, branch, localPath);
+
+    let lensFiles = [];
+    let enhanceFiles = {};
+
+    if (lensFilePath) {
+      // If specific path is provided, use it
+      const fullPath = path.join(localPath, lensFilePath);
+      if (fs.existsSync(fullPath)) {
+        lensFiles = [fullPath];
+      } else {
+        console.warn(`Specified lens file not found: ${lensFilePath}`);
+      }
+    } else {
+      // Discover all JSON and JS files
+      lensFiles = findJsonFiles(localPath);
+      enhanceFiles = findEnhanceFiles(localPath);
+    }
+
+    const validLenses = [];
+
+    for (const filePath of lensFiles) {
+      try {
+        const content = fs.readFileSync(filePath, 'utf8');
+        const jsonData = JSON.parse(content);
+
+        const validation = validateFHIRLens(jsonData);
+
+        if (validation.isValid) {
+          // Lens is valid
+          validLenses.push({
+            id: jsonData.id,
+            name: jsonData.name,
+            url: jsonData.url,
+            version: jsonData.version || 'unknown',
+            status: jsonData.status,
+            path: filePath,
+            hasBase64: true,
+            lens: jsonData
+          });
+        } else if (jsonData.content && !Array.some(jsonData.content, (c) => c.data)) {
+          // Lens is missing base64 but we might have an enhance function
+          const fileDir = path.dirname(filePath);
+          const enhanceFile = enhanceFiles[fileDir];
+
+          if (enhanceFile) {
+            try {
+              const base64Content = jsToBase64(enhanceFile);
+              jsonData.content = jsonData.content || [];
+              if (jsonData.content.length === 0) {
+                jsonData.content.push({});
+              }
+              jsonData.content[0].data = base64Content;
+
+              const revalidation = validateFHIRLens(jsonData);
+              if (revalidation.isValid) {
+                validLenses.push({
+                  id: jsonData.id,
+                  name: jsonData.name,
+                  url: jsonData.url,
+                  version: jsonData.version || 'unknown',
+                  status: jsonData.status,
+                  path: filePath,
+                  hasBase64: true,
+                  enhancedWithJs: enhanceFile,
+                  lens: jsonData
+                });
+              }
+            } catch (jsError) {
+              console.debug(`Failed to enhance lens with JS: ${jsError.message}`);
+            }
+          }
+        }
+      } catch (error) {
+        console.debug(`Error processing file ${filePath}: ${error.message}`);
+      }
+    }
+
+    return validLenses;
+  } catch (error) {
+    console.error(`Error discovering lenses from ${repoUrl}:`, error.message);
+    throw error;
+  }
+}
+
+module.exports = {
+  validateFHIRLens,
+  discoverLenses,
+  findJsonFiles,
+  findEnhanceFiles,
+  jsToBase64,
+  ensureRepo
+};
