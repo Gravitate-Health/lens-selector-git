@@ -2,6 +2,8 @@
 
 A service that discovers and validates FHIR Lens profiles from Git repositories and exposes them via a REST API conforming to the OpenAPI specification.
 
+Meant to be instantiated for each lens git repository, getting the latest version available through git.
+
 ## Features
 
 - **Automatic Discovery**: Recursively scans repositories for valid FHIR Lens profiles (JSON files)
