@@ -2,11 +2,13 @@ FROM node:18-alpine
 
 WORKDIR /app
 
+# Install git (required by simple-git)
+RUN apk add --no-cache git
+
 # Copy package files
 COPY package*.json ./
 
 # Install dependencies
-RUN npm install
 RUN npm ci --only=production
 
 # Copy application code
