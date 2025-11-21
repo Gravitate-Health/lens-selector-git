@@ -251,17 +251,6 @@ Developer Machine
 └── localhost:3000
 ```
 
-### Docker Compose
-```
-docker-compose.yml
-├── lens-selector (service)
-│   ├── Port: 3000 -> 3000
-│   ├── Volume: lens-repos
-│   └── Network: lens-network
-└── Data volumes
-    └── lens-repos (named)
-```
-
 ### Kubernetes
 ```
 Kubernetes Cluster
