@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const { getRepoLocalPath } = require('../utils/repoManager');
 
 /**
  * FHIR Lens JSON Schema (simplified validation)
@@ -180,34 +179,18 @@ function isLensMissingBase64Content(jsonData) {
 
 
 /**
- * Discover and validate lenses from a git repository
- * @param {string} repoUrl - Git repository URL
- * @param {string} branch - Branch or tag name (optional)
- * @param {string} lensFilePath - Optional path to specific lens file within repo
+ * Discover and validate lenses from a folder
+ * @param {string} lensFilePath - path to folder with lenses
  * @returns {Promise<Array>} Array of valid lenses with metadata
  */
-async function discoverLenses(repoUrl, branch, lensFilePath) {
-  const localPath = getRepoLocalPath(repoUrl);
+async function discoverLenses(lensFilePath) {
 
   try {
     let lensFiles = [];
     let enhanceFiles = {};
 
-    if (lensFilePath) {
-      // If specific path is provided, use it
-      const fullPath = path.join(localPath, lensFilePath);
-      if (fs.existsSync(fullPath)) {
-        lensFiles = [fullPath];
-      } else {
-        console.warn(`Specified lens file not found: ${lensFilePath}, autodetecting lenses instead.`);
-      }
-    }
-    if (lensFiles.length === 0) {
-      // Discover all JSON and JS files
-      lensFiles = findJsonFiles(localPath);
-      enhanceFiles = findEnhanceFiles(localPath);
-      console.log(`Discovered ${lensFiles.length} JSON files and ${Object.keys(enhanceFiles).length} enhance JS files.`);
-    }
+    lensFiles = findJsonFiles(lensFilePath);
+    enhanceFiles = findEnhanceFiles(lensFilePath);
 
     const validLenses = [];
 
@@ -276,7 +259,7 @@ async function discoverLenses(repoUrl, branch, lensFilePath) {
 
     return validLenses;
   } catch (error) {
-    console.error(`Error discovering lenses from ${repoUrl}:`, error.message);
+    console.error(`Error discovering lenses:`, error.message);
     throw error;
   }
 }

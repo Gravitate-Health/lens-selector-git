@@ -40,8 +40,22 @@ async function getLenses(repoUrl, branch, lensFilePath) {
     const localPath = getRepoLocalPath(repoUrl);
     await ensureRepo(repoUrl, branch, localPath);
     
-    // Step 2: Discover lenses
-    const lenses = await discoverLenses(repoUrl, branch, lensFilePath);
+    // Step 2: try given path first
+    const lenses = [];
+    if (lensFilePath) {
+      // If specific path is provided, use it
+      const fullPath = path.join(localPath, lensFilePath);
+      if (fs.existsSync(fullPath)) {
+        lenses = [fullPath];
+      } else {
+        console.warn(`Specified lens file not found: ${lensFilePath}, autodetecting lenses instead.`);
+      }
+    }
+
+    // Step 3: EOC Auto Discover lenses
+    if (lenses.length === 0) {
+      lenses = await discoverLenses(localPath);
+    }
 
     // Cache the result
     lensCache.set(cacheKey, {
