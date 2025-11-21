@@ -41,7 +41,7 @@ async function getLenses(repoUrl, branch, lensFilePath) {
     await ensureRepo(repoUrl, branch, localPath);
     
     // Step 2: try given path first
-    const lenses = [];
+    lenses = [];
     if (lensFilePath) {
       // If specific path is provided, use it
       const fullPath = path.join(localPath, lensFilePath);
