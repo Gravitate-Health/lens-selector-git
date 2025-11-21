@@ -214,7 +214,7 @@ async function discoverLenses(lensFilePath) {
             hasBase64: true,
             lens: jsonData
           });
-        } else if ((validation.errors.length===1 && validation.errors[0].contains("content")) && isLensMissingBase64Content(jsonData)) {
+        } else if ((validation.errors.length===1 && validation.errors[0].includes("content")) && isLensMissingBase64Content(jsonData)) {
 
           const fileDir = path.dirname(filePath);
           const enhanceFile = enhanceFiles[fileDir];
