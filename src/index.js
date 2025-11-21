@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const lensesRouter = require('./routes/lenses');
+const { ensureRepo, getRepoLocalPath } = require('./utils/repoManager');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -40,4 +41,7 @@ app.listen(PORT, () => {
   console.log(`  GIT_REPO_URL: ${process.env.GIT_REPO_URL || 'not set'}`);
   console.log(`  GIT_BRANCH: ${process.env.GIT_BRANCH || 'not set (will use main/master)'}`);
   console.log(`  LENS_FILE_PATH: ${process.env.LENS_FILE_PATH || 'not set (will auto-discover)'}`);
+  console.log(`Cloning from repository...`);
+  const localPath = getRepoLocalPath(process.env.GIT_REPO_URL);
+  ensureRepo(process.env.GIT_REPO_URL, process.env.GIT_BRANCH, localPath);
 });

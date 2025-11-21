@@ -1,4 +1,5 @@
 const { discoverLenses } = require('../utils/lensValidator');
+const { ensureRepo, getRepoLocalPath } = require('../utils/repoManager');
 
 // Cache to store lenses with TTL
 const lensCache = new Map();
@@ -35,6 +36,11 @@ async function getLenses(repoUrl, branch, lensFilePath) {
   console.log(`Discovering lenses from ${repoUrl}`);
 
   try {
+    // Step 1: Ensure repository is cloned/updated
+    const localPath = getRepoLocalPath(repoUrl);
+    await ensureRepo(repoUrl, branch, localPath);
+    
+    // Step 2: Discover lenses
     const lenses = await discoverLenses(repoUrl, branch, lensFilePath);
 
     // Cache the result

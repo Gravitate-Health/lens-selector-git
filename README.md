@@ -11,7 +11,7 @@ Meant to be instantiated for each lens git repository, getting the latest versio
 - **JavaScript Enhancement**: If a lens is missing base64-encoded content but has an accompanying JS file with an `enhance` function, the JS content is automatically encoded and included
 - **Repository Management**: Automatically clones and updates Git repositories on each API invocation to ensure latest versions
 - **Caching**: Implements intelligent caching to minimize redundant operations
-- **Docker Ready**: Includes Dockerfile and docker-compose configuration for easy deployment
+- **Docker Ready**: Includes Dockerfile for easy deployment
 
 ## API Endpoints
 
@@ -67,7 +67,7 @@ Returns a complete lens by name or ID.
 
 ### Prerequisites
 - Node.js 18+ (for local development)
-- Docker & Docker Compose (for containerized deployment)
+- Docker (for containerized deployment)
 - Git
 
 ### Local Development
@@ -98,14 +98,6 @@ Returns a complete lens by name or ID.
    ```
 
 ### Docker Deployment
-
-#### Using docker-compose (Recommended)
-
-1. Create `.env` file with required variables
-2. Build and run:
-   ```bash
-   docker-compose up
-   ```
 
 #### Manual Docker build
 
@@ -164,32 +156,6 @@ The service maintains an in-memory cache of discovered lenses with a configurabl
 The cache is automatically invalidated based on the repository URL, branch, and lens file path.
 
 To clear the cache programmatically, restart the service.
-
-## Project Structure
-
-```
-lens-selector/
-├── src/
-│   ├── index.js              # Express app entry point
-│   ├── routes/
-│   │   └── lenses.js         # API route handlers
-│   ├── services/
-│   │   └── lensService.js    # Business logic and caching
-│   └── utils/
-│       └── lensValidator.js  # FHIR Lens validation and discovery
-├── __tests__/
-│   ├── lensValidator.test.js # Validator unit tests
-│   ├── lensService.test.js   # Service layer tests
-│   └── lenses.routes.test.js # API route tests
-├── Dockerfile                # Container image definition
-├── docker-compose.yml        # Multi-container orchestration
-├── package.json              # Node.js dependencies
-├── jest.config.js            # Jest test configuration
-├── openapi.yaml              # OpenAPI specification
-├── .env.example              # Environment variable template
-├── README.md                 # This file
-└── TESTING.md                # Testing documentation
-```
 
 ## Development
 
@@ -261,8 +227,3 @@ For issues and questions related to FHIR Lens profile validation, refer to:
 - [FHIR Lens Profile Documentation](https://build.fhir.org/ig/hl7-eu/gravitate-health/StructureDefinition-lens.html)
 - [FHIR Library Resource](https://www.hl7.org/fhir/library.html)
 
----
-
-**Project**: Gravitate Health  
-**Component**: Lens Selector Service  
-**Version**: 1.0.0

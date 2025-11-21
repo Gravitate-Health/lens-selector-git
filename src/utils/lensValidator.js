@@ -1,7 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const axios = require('axios');
-const simpleGit = require('simple-git');
 
 /**
  * FHIR Lens JSON Schema (simplified validation)
@@ -155,40 +153,6 @@ function jsToBase64(filePath) {
   return Buffer.from(content).toString('base64');
 }
 
-/**
- * Clone or update a git repository
- * @param {string} repoUrl - Git repository URL
- * @param {string} branch - Branch or tag name (optional, defaults to main/master)
- * @param {string} localPath - Local path to clone to
- * @returns {Promise<void>}
- */
-async function ensureRepo(repoUrl, branch, localPath) {
-  const git = simpleGit();
-
-  try {
-    if (fs.existsSync(localPath)) {
-      // Update existing repo
-      const repoGit = simpleGit(localPath);
-      await repoGit.fetch('origin');
-      if (branch) {
-        await repoGit.checkout(branch);
-      } else {
-        await repoGit.checkout(['main']).catch(() => repoGit.checkout('master'));
-      }
-      await repoGit.pull('origin');
-    } else {
-      // Clone new repo
-      if (branch) {
-        await git.clone(repoUrl, localPath, ['--branch', branch, '--single-branch']);
-      } else {
-        await git.clone(repoUrl, localPath);
-      }
-    }
-  } catch (error) {
-    console.error(`Error managing repository ${repoUrl}:`, error.message);
-    throw error;
-  }
-}
 function isLensMissingBase64Content(jsonData) {
   // Determine if the lens is missing base64 content and needs enhancement.
   // Cases:
@@ -219,17 +183,12 @@ function isLensMissingBase64Content(jsonData) {
  * @param {string} repoUrl - Git repository URL
  * @param {string} branch - Branch or tag name (optional)
  * @param {string} lensFilePath - Optional path to specific lens file within repo
- * @param {string} tempDir - Temporary directory for git operations
  * @returns {Promise<Array>} Array of valid lenses with metadata
  */
-async function discoverLenses(repoUrl, branch, lensFilePath, tempDir = '/tmp/lens-repos') {
-  const repoName = repoUrl.split('/').pop().replace('.git', '');
-  const localPath = path.join(tempDir, repoName);
+async function discoverLenses(repoUrl, branch, lensFilePath) {
+  const localPath = getRepoLocalPath(repoUrl);
 
   try {
-    // Ensure repository is cloned/updated
-    await ensureRepo(repoUrl, branch, localPath);
-
     let lensFiles = [];
     let enhanceFiles = {};
 
@@ -326,6 +285,5 @@ module.exports = {
   discoverLenses,
   findJsonFiles,
   findEnhanceFiles,
-  jsToBase64,
-  ensureRepo
+  jsToBase64
 };
