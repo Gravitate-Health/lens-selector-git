@@ -42,10 +42,6 @@ function validateFHIRLens(lens) {
     errors.push('resourceType must be "Library"');
   }
 
-  if (!lens.id || typeof lens.id !== 'string') {
-    errors.push('id is required and must be a string');
-  }
-
   if (!lens.url || typeof lens.url !== 'string') {
     errors.push('url is required and must be a string');
   }
