@@ -126,10 +126,20 @@ function findEnhanceFiles(dir) {
       } else if (path.extname(file) === '.js') {
         try {
           const content = fs.readFileSync(filePath, 'utf8');
-          if (content.includes('function\s+enhance') 
-            || content.includes('const\s+enhance') 
-            || content.includes('export.*enhance')
-            || content.includes('let\s+enhance\s+=.*()')) {
+          // Check if the file contains an enhance function using regex
+          const enhancePatterns = [
+            /function\s+enhance\s*\(/,
+            /const\s+enhance\s*=/,
+            /let\s+enhance\s*=/,
+            /var\s+enhance\s*=/,
+            /enhance\s*:\s*function/,
+            /enhance\s*:\s*async\s+function/,
+            /enhance:\s*enhance/
+          ];
+          
+          const hasEnhance = enhancePatterns.some(pattern => pattern.test(content));
+          
+          if (hasEnhance) {
             // Store mapping from potential JSON file name to JS file path
             const baseName = path.basename(file, '.js');
             const jsonFilePath = path.join(currentDir, baseName + '.json');
