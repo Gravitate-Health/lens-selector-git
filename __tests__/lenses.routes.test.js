@@ -24,7 +24,7 @@ describe('Lenses API Routes', () => {
   });
 
   describe('GET /lenses', () => {
-    test('returns list of lens IDs', async () => {
+    test('returns list of lens names', async () => {
       const mockLensNames = ['pregnancy-lens', 'drug-interaction-lens'];
       getLensNames.mockResolvedValue(mockLensNames);
 
@@ -62,7 +62,6 @@ describe('Lenses API Routes', () => {
     test('returns specific lens by name', async () => {
       const mockLens = {
         resourceType: 'Library',
-        id: 'pregnancy-lens',
         url: 'http://hl7.eu/fhir/ig/gravitate-health/Library/pregnancy-lens',
         name: 'pregnancy-lens',
         status: 'draft',
@@ -76,7 +75,7 @@ describe('Lenses API Routes', () => {
       expect(response.status).toBe(200);
       expect(response.body).toEqual(mockLens);
       expect(response.body.resourceType).toBe('Library');
-      expect(response.body.id).toBe('pregnancy-lens');
+      expect(response.body.name).toBe('pregnancy-lens');
     });
 
     test('returns 404 when lens not found', async () => {
@@ -97,24 +96,6 @@ describe('Lenses API Routes', () => {
 
       expect(response.status).toBe(500);
       expect(response.body).toHaveProperty('error', 'Failed to fetch lens');
-    });
-
-    test('accepts lens ID as name parameter', async () => {
-      const mockLens = {
-        resourceType: 'Library',
-        id: 'test-123',
-        url: 'http://example.com/Library/test-123',
-        name: 'Test Lens',
-        status: 'draft',
-        content: [{ data: 'base64content' }]
-      };
-
-      getLensByName.mockResolvedValue(mockLens);
-
-      const response = await request(app).get('/lenses/test-123');
-
-      expect(response.status).toBe(200);
-      expect(response.body.id).toBe('test-123');
     });
   });
 

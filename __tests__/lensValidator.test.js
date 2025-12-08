@@ -52,20 +52,6 @@ describe('FHIR Lens Validator', () => {
       expect(result.errors).toContain('resourceType must be "Library"');
     });
 
-    test('rejects lens with missing id', () => {
-      const invalidLens = {
-        resourceType: 'Library',
-        url: 'http://example.com/Library/test-lens',
-        name: 'Test Lens',
-        status: 'draft',
-        content: [{ data: 'base64data' }]
-      };
-
-      const result = validateFHIRLens(invalidLens);
-      expect(result.isValid).toBe(false);
-      expect(result.errors).toContain('id is required and must be a string');
-    });
-
     test('rejects lens with missing url', () => {
       const invalidLens = {
         resourceType: 'Library',
@@ -224,7 +210,6 @@ describe('FHIR Lens Validator', () => {
 
           // Check first lens structure
           const lens = lenses[0];
-          expect(lens).toHaveProperty('id');
           expect(lens).toHaveProperty('name');
           expect(lens).toHaveProperty('url');
           expect(lens).toHaveProperty('status');

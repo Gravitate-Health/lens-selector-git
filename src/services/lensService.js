@@ -81,7 +81,7 @@ async function getLenses(repoUrl, branch, lensFilePath) {
 async function getLensByName(repoUrl, branch, lensFilePath, lensName) {
   const lenses = await getLenses(repoUrl, branch, lensFilePath);
 
-  const lens = lenses.find((l) => l.name === lensName || l.id === lensName);
+  const lens = lenses.find((l) => l.name === lensName );
 
   if (!lens) {
     const error = new Error(`Lens '${lensName}' not found`);
@@ -101,7 +101,7 @@ async function getLensByName(repoUrl, branch, lensFilePath, lensName) {
  */
 async function getLensNames(repoUrl, branch, lensFilePath) {
   const lenses = await getLenses(repoUrl, branch, lensFilePath);
-  return lenses.map((l) => l.id);
+  return lenses.map((l) => l.name);
 }
 
 /**
