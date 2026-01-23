@@ -1,7 +1,8 @@
-name: Main import action
+name: CI CD
 
 on:
   push:
+
 jobs:
     main-GH-workflow:
       uses: Gravitate-Health/reusable-workflows/.github/workflows/main.yml@main
