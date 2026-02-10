@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "lens-selector.fullname" . }}
+  name: {{ include "lens-selector-git.fullname" . }}
   labels:
-    {{- include "lens-selector.labels" . | nindent 4 }}
+    {{- include "lens-selector-git.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "lens-selector.selectorLabels" . | nindent 6 }}
+      {{- include "lens-selector-git.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -19,13 +19,13 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "lens-selector.selectorLabels" . | nindent 8 }}
+        {{- include "lens-selector-git.selectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "lens-selector.serviceAccountName" . }}
+      serviceAccountName: {{ include "lens-selector-git.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -40,10 +40,10 @@ spec:
           protocol: TCP
         envFrom:
         - configMapRef:
-            name: {{ include "lens-selector.fullname" . }}
+            name: {{ include "lens-selector-git.fullname" . }}
         {{- if .Values.secrets }}
         - secretRef:
-            name: {{ include "lens-selector.fullname" . }}
+            name: {{ include "lens-selector-git.fullname" . }}
         {{- end }}
         livenessProbe:
           httpGet:

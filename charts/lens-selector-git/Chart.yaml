@@ -1,6 +1,6 @@
 apiVersion: v2
-name: lens-selector
-description: A Helm chart for deploying Lens Selector Service - discovers and validates FHIR Lens profiles from git repositories
+name: lens-selector-git
+description: A Helm chart for deploying Git Lens Selector Service - discovers and validates FHIR Lens profiles from git repositories
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

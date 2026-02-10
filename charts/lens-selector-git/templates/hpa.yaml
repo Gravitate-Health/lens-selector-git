@@ -2,14 +2,14 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "lens-selector.fullname" . }}
+  name: {{ include "lens-selector-git.fullname" . }}
   labels:
-    {{- include "lens-selector.labels" . | nindent 4 }}
+    {{- include "lens-selector-git.labels" . | nindent 4 }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ include "lens-selector.fullname" . }}
+    name: {{ include "lens-selector-git.fullname" . }}
   minReplicas: {{ .Values.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.autoscaling.maxReplicas }}
   metrics:

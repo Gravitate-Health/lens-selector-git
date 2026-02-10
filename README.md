@@ -168,11 +168,11 @@ Returns a complete lens by name or ID from any configured repository.
 #### Manual Docker build
 
 ```bash
-docker build -t lens-selector:latest .
+docker build -t lens-selector-git:latest .
 docker run -e GIT_REPO_URL=https://your-repo.git \
            -e GIT_BRANCH=main \
            -p 3000:3000 \
-           lens-selector:latest
+           lens-selector-git:latest
 ```
 
 ## Kubernetes Deployment
@@ -188,17 +188,17 @@ The service can be deployed to Kubernetes using Helm charts published as OCI art
 helm registry login ghcr.io -u YOUR_GITHUB_USERNAME
 
 # Install the chart with default values (all official lenses)
-helm install my-lens-selector oci://ghcr.io/gravitate-health/charts/lens-selector --version 0.1.0
+helm install my-lens-selector oci://ghcr.io/gravitate-health/charts/lens-selector-git --version 0.1.0
 
 # Or install with custom values
-helm install my-lens-selector oci://ghcr.io/gravitate-health/charts/lens-selector \
+helm install my-lens-selector oci://ghcr.io/gravitate-health/charts/lens-selector-git \
   --version 0.1.0 \
   --set image.tag=v1.0.0 \
   --set config.reposConfig="https://example.com/custom-lenses.json" \
   --set config.cacheTtlMinutes=-1
 
 # Upgrade an existing deployment
-helm upgrade my-lens-selector oci://ghcr.io/gravitate-health/charts/lens-selector --version 0.1.0
+helm upgrade my-lens-selector oci://ghcr.io/gravitate-health/charts/lens-selector-git --version 0.1.0
 
 # Uninstall
 helm uninstall my-lens-selector
@@ -262,7 +262,7 @@ resources:
 EOF
 
 # Install with custom values
-helm install my-lens-selector oci://ghcr.io/gravitate-health/charts/lens-selector \
+helm install my-lens-selector oci://ghcr.io/gravitate-health/charts/lens-selector-git \
   --version 0.1.0 \
   -f my-values.yaml
 ```
@@ -273,24 +273,24 @@ If you've cloned the repository and want to work with the chart locally:
 
 ```bash
 # Validate the chart
-helm lint charts/lens-selector
+helm lint charts/lens-selector-git
 
 # Generate Kubernetes manifests without installing (dry-run)
-helm template my-lens-selector charts/lens-selector
+helm template my-lens-selector charts/lens-selector-git
 
 # Generate manifests with custom values
-helm template my-lens-selector charts/lens-selector \
+helm template my-lens-selector charts/lens-selector-git \
   --set config.cacheTtlMinutes=-1 \
   --set image.tag=latest
 
 # Install from local chart
-helm install my-lens-selector charts/lens-selector
+helm install my-lens-selector charts/lens-selector-git
 
 # Package the chart (creates a .tgz file)
-helm package charts/lens-selector
+helm package charts/lens-selector-git
 
 # Push to OCI registry (requires authentication)
-helm push lens-selector-0.1.0.tgz oci://ghcr.io/gravitate-health/charts
+helm push lens-selector-git-0.1.0.tgz oci://ghcr.io/gravitate-health/charts
 ```
 
 ### Service Discovery
@@ -499,8 +499,8 @@ docker build -t lens-selector:1.0.0 .
 ### Tagging for Registry
 
 ```bash
-docker tag lens-selector:1.0.0 your-registry/lens-selector:1.0.0
-docker push your-registry/lens-selector:1.0.0
+docker tag lens-selector-git:1.0.0 your-registry/lens-selector-git:1.0.0
+docker push your-registry/lens-selector-git:1.0.0
 ```
 
 ## Troubleshooting
