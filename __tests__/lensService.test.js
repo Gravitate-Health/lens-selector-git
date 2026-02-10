@@ -5,11 +5,18 @@ jest.mock('../src/utils/lensValidator', () => ({
 
 jest.mock('../src/utils/repoManager', () => ({
   ensureRepo: jest.fn().mockResolvedValue(undefined),
-  getRepoLocalPath: jest.fn((repoUrl) => `/tmp/repos/${repoUrl.replace(/[^a-zA-Z0-9]/g, '_')}`)
+  ensureMultipleRepos: jest.fn(),
+  getRepoLocalPath: jest.fn((repoUrl) => `/tmp/repos/${repoUrl.replace(/[^a-zA-Z0-9]/g, '_')}`),
+  getRepoCacheKey: jest.fn((repoUrl, branch, path) => `${repoUrl}:${branch || ''}:${path || ''}`)
 }));
 
-const { getLenses, getLensByName, getLensNames, clearCache } = require('../src/services/lensService');
+jest.mock('../src/utils/repoConfigParser', () => ({
+  getAllRepoConfigs: jest.fn()
+}));
+
+const { getLenses, getLensesFromRepo, getLensByName, getLensNames, clearCache } = require('../src/services/lensService');
 const { discoverLenses } = require('../src/utils/lensValidator');
+const { getAllRepoConfigs } = require('../src/utils/repoConfigParser');
 
 describe('Lens Service', () => {
   beforeEach(() => {
@@ -17,18 +24,9 @@ describe('Lens Service', () => {
     jest.clearAllMocks();
   });
 
-  describe('getLenses', () => {
-    test('throws error when GIT_REPO_URL is missing', async () => {
-      const originalEnv = process.env.GIT_REPO_URL;
-      delete process.env.GIT_REPO_URL;
-
-      try {
-        await getLenses(null, 'main');
-      } catch (error) {
-        expect(error.message).toContain('GIT_REPO_URL');
-      }
-
-      process.env.GIT_REPO_URL = originalEnv;
+  describe('getLensesFromRepo (single repo)', () => {
+    test('throws error when repoUrl is missing', async () => {
+      await expect(getLensesFromRepo(null, 'main')).rejects.toThrow('Repository URL is required');
     });
 
     test('calls discoverLenses with correct parameters', async () => {
@@ -39,7 +37,7 @@ describe('Lens Service', () => {
 
       discoverLenses.mockResolvedValue(mockLenses);
 
-      const result = await getLenses('https://repo.git', 'main', null);
+      const result = await getLensesFromRepo('https://repo.git', 'main', null);
 
       expect(discoverLenses).toHaveBeenCalled();
       expect(result).toEqual(mockLenses);
@@ -52,8 +50,8 @@ describe('Lens Service', () => {
 
       discoverLenses.mockResolvedValue(mockLenses);
 
-      const result1 = await getLenses('https://repo.git', 'main');
-      const result2 = await getLenses('https://repo.git', 'main');
+      const result1 = await getLensesFromRepo('https://repo.git', 'main');
+      const result2 = await getLensesFromRepo('https://repo.git', 'main');
 
       expect(discoverLenses).toHaveBeenCalledTimes(1);
       expect(result1).toEqual(result2);
@@ -67,8 +65,8 @@ describe('Lens Service', () => {
         .mockResolvedValueOnce(mockLenses1)
         .mockResolvedValueOnce(mockLenses2);
 
-      const result1 = await getLenses('https://repo1.git', 'main');
-      const result2 = await getLenses('https://repo2.git', 'main');
+      const result1 = await getLensesFromRepo('https://repo1.git', 'main');
+      const result2 = await getLensesFromRepo('https://repo2.git', 'main');
 
       expect(discoverLenses).toHaveBeenCalledTimes(2);
       expect(result1).toEqual(mockLenses1);
@@ -83,8 +81,8 @@ describe('Lens Service', () => {
         .mockResolvedValueOnce(mockLenses1)
         .mockResolvedValueOnce(mockLenses2);
 
-      const result1 = await getLenses('https://repo.git', 'main');
-      const result2 = await getLenses('https://repo.git', 'develop');
+      const result1 = await getLensesFromRepo('https://repo.git', 'main');
+      const result2 = await getLensesFromRepo('https://repo.git', 'develop');
 
       expect(discoverLenses).toHaveBeenCalledTimes(2);
       expect(result1).toEqual(mockLenses1);
@@ -95,12 +93,86 @@ describe('Lens Service', () => {
       const error = new Error('Discover failed');
       discoverLenses.mockRejectedValue(error);
 
-      await expect(getLenses('https://repo.git', 'main')).rejects.toThrow('Discover failed');
+      await expect(getLensesFromRepo('https://repo.git', 'main')).rejects.toThrow('Discover failed');
+    });
+  });
+
+  describe('getLenses (multi-repo)', () => {
+    test('aggregates lenses from multiple repositories', async () => {
+      const repoConfigs = [
+        { repoUrl: 'https://repo1.git', branch: 'main', path: null },
+        { repoUrl: 'https://repo2.git', branch: 'develop', path: null }
+      ];
+
+      getAllRepoConfigs.mockResolvedValue(repoConfigs);
+
+      const mockLenses1 = [{ name: 'lens1', lens: { name: 'lens1' } }];
+      const mockLenses2 = [{ name: 'lens2', lens: { name: 'lens2' } }];
+
+      discoverLenses
+        .mockResolvedValueOnce(mockLenses1)
+        .mockResolvedValueOnce(mockLenses2);
+
+      const result = await getLenses();
+
+      expect(getAllRepoConfigs).toHaveBeenCalled();
+      expect(result).toHaveLength(2);
+      expect(result[0].name).toBe('lens1');
+      expect(result[0].sourceRepo).toBe('https://repo1.git');
+      expect(result[1].name).toBe('lens2');
+      expect(result[1].sourceRepo).toBe('https://repo2.git');
+    });
+
+    test('continues processing when one repo fails', async () => {
+      const repoConfigs = [
+        { repoUrl: 'https://repo1.git', branch: 'main', path: null },
+        { repoUrl: 'https://repo2.git', branch: 'main', path: null }
+      ];
+
+      getAllRepoConfigs.mockResolvedValue(repoConfigs);
+
+      const mockLenses = [{ name: 'lens2', lens: { name: 'lens2' } }];
+
+      discoverLenses
+        .mockRejectedValueOnce(new Error('Repo 1 failed'))
+        .mockResolvedValueOnce(mockLenses);
+
+      const result = await getLenses();
+
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe('lens2');
+    });
+
+    test('throws error when all repos fail', async () => {
+      const repoConfigs = [
+        { repoUrl: 'https://repo1.git', branch: 'main', path: null },
+        { repoUrl: 'https://repo2.git', branch: 'main', path: null }
+      ];
+
+      getAllRepoConfigs.mockResolvedValue(repoConfigs);
+
+      discoverLenses
+        .mockRejectedValueOnce(new Error('Repo 1 failed'))
+        .mockRejectedValueOnce(new Error('Repo 2 failed'));
+
+      await expect(getLenses()).rejects.toThrow('Failed to retrieve lenses from any repository');
+    });
+
+    test('throws error when getAllRepoConfigs fails', async () => {
+      getAllRepoConfigs.mockRejectedValue(new Error('No repo config'));
+
+      await expect(getLenses()).rejects.toThrow('No repo config');
     });
   });
 
   describe('getLensByName', () => {
-    test('returns lens with matching name', async () => {
+    test('returns lens with matching name from multi-repo', async () => {
+      const repoConfigs = [
+        { repoUrl: 'https://repo1.git', branch: 'main', path: null }
+      ];
+
+      getAllRepoConfigs.mockResolvedValue(repoConfigs);
+
       const mockLens = {
         resourceType: 'Library',
         name: 'pregnancy-lens'
@@ -113,12 +185,18 @@ describe('Lens Service', () => {
 
       discoverLenses.mockResolvedValue(mockLenses);
 
-      const result = await getLensByName('https://repo.git', 'main', null, 'pregnancy-lens');
+      const result = await getLensByName('pregnancy-lens');
 
       expect(result).toEqual(mockLens);
     });
 
     test('throws 404 error when lens not found', async () => {
+      const repoConfigs = [
+        { repoUrl: 'https://repo1.git', branch: 'main', path: null }
+      ];
+
+      getAllRepoConfigs.mockResolvedValue(repoConfigs);
+
       const mockLenses = [
         { name: 'lens1', lens: {} }
       ];
@@ -126,7 +204,7 @@ describe('Lens Service', () => {
       discoverLenses.mockResolvedValue(mockLenses);
 
       try {
-        await getLensByName('https://repo.git', 'main', null, 'non-existent');
+        await getLensByName('non-existent');
         fail('Should have thrown error');
       } catch (error) {
         expect(error.statusCode).toBe(404);
@@ -136,25 +214,42 @@ describe('Lens Service', () => {
   });
 
   describe('getLensNames', () => {
-    test('returns array of lens names', async () => {
-      const mockLenses = [
+    test('returns array of lens names from all repos', async () => {
+      const repoConfigs = [
+        { repoUrl: 'https://repo1.git', branch: 'main', path: null },
+        { repoUrl: 'https://repo2.git', branch: 'main', path: null }
+      ];
+
+      getAllRepoConfigs.mockResolvedValue(repoConfigs);
+
+      const mockLenses1 = [
         { name: 'lens1', lens: {} },
-        { name: 'lens2', lens: {} },
+        { name: 'lens2', lens: {} }
+      ];
+
+      const mockLenses2 = [
         { name: 'lens3', lens: {} }
       ];
 
-      discoverLenses.mockResolvedValue(mockLenses);
+      discoverLenses
+        .mockResolvedValueOnce(mockLenses1)
+        .mockResolvedValueOnce(mockLenses2);
 
-      const result = await getLensNames('https://repo.git', 'main');
+      const result = await getLensNames();
 
       expect(Array.isArray(result)).toBe(true);
       expect(result).toEqual(['lens1', 'lens2', 'lens3']);
     });
 
     test('returns empty array when no lenses found', async () => {
+      const repoConfigs = [
+        { repoUrl: 'https://repo1.git', branch: 'main', path: null }
+      ];
+
+      getAllRepoConfigs.mockResolvedValue(repoConfigs);
       discoverLenses.mockResolvedValue([]);
 
-      const result = await getLensNames('https://repo.git', 'main');
+      const result = await getLensNames();
 
       expect(Array.isArray(result)).toBe(true);
       expect(result.length).toBe(0);
@@ -163,12 +258,18 @@ describe('Lens Service', () => {
 
   describe('clearCache', () => {
     test('clears cached lenses', async () => {
+      const repoConfigs = [
+        { repoUrl: 'https://repo1.git', branch: 'main', path: null }
+      ];
+
+      getAllRepoConfigs.mockResolvedValue(repoConfigs);
+
       const mockLenses = [{ name: 'lens1', lens: {} }];
 
       discoverLenses.mockResolvedValue(mockLenses);
 
       // First call - caches result
-      const result1 = await getLenses('https://repo.git', 'main');
+      const result1 = await getLenses();
 
       // Mock now returns different data
       const newMockLenses = [
@@ -178,15 +279,15 @@ describe('Lens Service', () => {
       discoverLenses.mockResolvedValue(newMockLenses);
 
       // Second call - should return cached result
-      const result2 = await getLenses('https://repo.git', 'main');
-      expect(result2).toEqual(result1);
+      const result2 = await getLenses();
+      expect(result2.length).toEqual(result1.length);
 
       // Clear cache
       clearCache();
 
       // Third call - should call discoverLenses again
-      const result3 = await getLenses('https://repo.git', 'main');
-      expect(result3).toEqual(newMockLenses);
+      const result3 = await getLenses();
+      expect(result3.length).toEqual(2);
       expect(discoverLenses).toHaveBeenCalledTimes(2);
     });
   });

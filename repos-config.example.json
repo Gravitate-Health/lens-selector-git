@@ -1,0 +1,14 @@
+[
+  {
+    "repoUrl": "https://github.com/Gravitate-Health/pregnancy-lens.git",
+    "branch": "main",
+    "path": "pregnancy-lens.json"
+  },
+  {
+    "repoUrl": "https://github.com/Gravitate-Health/another-lens.git",
+    "branch": "develop"
+  },
+  {
+    "repoUrl": "https://github.com/Gravitate-Health/third-lens.git"
+  }
+]

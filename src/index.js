@@ -1,7 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const lensesRouter = require('./routes/lenses');
-const { ensureRepo, getRepoLocalPath } = require('./utils/repoManager');
+const { ensureMultipleRepos } = require('./utils/repoManager');
+const { getAllRepoConfigs } = require('./utils/repoConfigParser');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -34,14 +35,59 @@ app.use((req, res) => {
   });
 });
 
-// Start server
-app.listen(PORT, () => {
+// Start server and initialize repositories
+app.listen(PORT, async () => {
   console.log(`Lens Selector Service running on port ${PORT}`);
   console.log('Environment configuration:');
-  console.log(`  GIT_REPO_URL: ${process.env.GIT_REPO_URL || 'not set'}`);
-  console.log(`  GIT_BRANCH: ${process.env.GIT_BRANCH || 'not set (will use main/master)'}`);
-  console.log(`  LENS_FILE_PATH: ${process.env.LENS_FILE_PATH || 'not set (will auto-discover)'}`);
-  console.log(`Cloning from repository...`);
-  const localPath = getRepoLocalPath(process.env.GIT_REPO_URL);
-  ensureRepo(process.env.GIT_REPO_URL, process.env.GIT_BRANCH, localPath);
+  
+  try {
+    // Display configuration source
+    if (process.env.REPOS_CONFIG) {
+      console.log(`  REPOS_CONFIG: ${process.env.REPOS_CONFIG}`);
+      console.log('  Multi-repo mode enabled');
+    }
+    
+    if (process.env.GIT_REPO_URL) {
+      console.log(`  GIT_REPO_URL: ${process.env.GIT_REPO_URL}`);
+      console.log(`  GIT_BRANCH: ${process.env.GIT_BRANCH || 'not set (will use main/master)'}`);
+      console.log(`  LENS_FILE_PATH: ${process.env.LENS_FILE_PATH || 'not set (will auto-discover)'}`);
+    }
+    
+    // Get all repository configurations
+    const repoConfigs = await getAllRepoConfigs();
+    
+    console.log(`\nInitializing ${repoConfigs.length} repository/repositories...`);
+    
+    // Display each repository configuration
+    repoConfigs.forEach((config, index) => {
+      console.log(`\n  Repository ${index + 1}:`);
+      console.log(`    URL: ${config.repoUrl}`);
+      console.log(`    Branch: ${config.branch || 'default (main/master)'}`);
+      console.log(`    Path: ${config.path || 'auto-discover'}`);
+    });
+    
+    console.log('\nCloning/updating repositories...');
+    
+    // Clone or update all repositories
+    const results = await ensureMultipleRepos(repoConfigs);
+    
+    // Display results
+    const successful = results.filter(r => r.success);
+    const failed = results.filter(r => !r.success);
+    
+    console.log(`\n✓ Successfully initialized ${successful.length}/${results.length} repositories`);
+    
+    if (failed.length > 0) {
+      console.error(`\n✗ Failed to initialize ${failed.length} repositories:`);
+      failed.forEach(result => {
+        console.error(`  - ${result.repoUrl}: ${result.error}`);
+      });
+    }
+    
+    console.log('\nService is ready to accept requests');
+    
+  } catch (error) {
+    console.error('\n✗ Failed to initialize repositories:', error.message);
+    console.error('Service may not function correctly until configuration is fixed.');
+  }
 });

@@ -1,5 +1,8 @@
 const { discoverLenses } = require('../utils/lensValidator');
-const { ensureRepo, getRepoLocalPath } = require('../utils/repoManager');
+const { ensureRepo, ensureMultipleRepos, getRepoLocalPath, getRepoCacheKey } = require('../utils/repoManager');
+const { getAllRepoConfigs } = require('../utils/repoConfigParser');
+const path = require('path');
+const fs = require('fs');
 
 // Cache to store lenses with TTL
 const lensCache = new Map();
@@ -8,25 +11,24 @@ const lensCache = new Map();
 const CACHE_TTL = parseInt(process.env.CACHE_TTL_MINUTES || '5', 10) * 60 * 1000;
 
 /**
- * Get all valid lenses from repository
- * Pulls latest version on each invocation
- * @param {string} repoUrl - Git repository URL (from env)
- * @param {string} branch - Branch/tag (from env, optional)
- * @param {string} lensFilePath - Path to lens file (from env, optional)
+ * Get all valid lenses from a single repository
+ * @param {string} repoUrl - Git repository URL
+ * @param {string} branch - Branch/tag (optional)
+ * @param {string} lensFilePath - Path to lens file (optional)
  * @returns {Promise<Array>} Array of valid lenses
  */
-async function getLenses(repoUrl, branch, lensFilePath) {
+async function getLensesFromRepo(repoUrl, branch, lensFilePath) {
   if (!repoUrl) {
-    throw new Error('GIT_REPO_URL environment variable is required');
+    throw new Error('Repository URL is required');
   }
 
-  const cacheKey = `${repoUrl}:${branch}:${lensFilePath}`;
+  const cacheKey = getRepoCacheKey(repoUrl, branch, lensFilePath);
 
   // Check cache
   if (lensCache.has(cacheKey)) {
     const cached = lensCache.get(cacheKey);
     if (Date.now() - cached.timestamp < CACHE_TTL) {
-      console.log('Returning cached lenses');
+      console.log(`Returning cached lenses for ${repoUrl}`);
       return cached.lenses;
     } else {
       lensCache.delete(cacheKey);
@@ -41,7 +43,7 @@ async function getLenses(repoUrl, branch, lensFilePath) {
     await ensureRepo(repoUrl, branch, localPath);
     
     // Step 2: try given path first
-    lenses = [];
+    let lenses = [];
     if (lensFilePath) {
       // If specific path is provided, use it
       const fullPath = path.join(localPath, lensFilePath);
@@ -65,23 +67,92 @@ async function getLenses(repoUrl, branch, lensFilePath) {
 
     return lenses;
   } catch (error) {
-    console.error('Error discovering lenses:', error);
+    console.error(`Error discovering lenses from ${repoUrl}:`, error);
     throw error;
   }
 }
 
 /**
- * Get a specific lens by name
+ * Get all valid lenses from all configured repositories
+ * Uses multi-repo configuration from REPOS_CONFIG and/or legacy env vars
+ * @returns {Promise<Array>} Array of valid lenses from all repos
+ */
+async function getLenses() {
+  try {
+    // Get all repo configurations
+    const repoConfigs = await getAllRepoConfigs();
+    
+    console.log(`Processing ${repoConfigs.length} repository configuration(s)`);
+
+    // Process all repositories and collect lenses
+    const allLenses = [];
+    const errors = [];
+
+    for (const config of repoConfigs) {
+      try {
+        const lenses = await getLensesFromRepo(config.repoUrl, config.branch, config.path);
+        
+        // Add repository metadata to each lens
+        const lensesWithRepoInfo = lenses.map(lens => ({
+          ...lens,
+          sourceRepo: config.repoUrl,
+          sourceBranch: config.branch,
+          sourcePath: config.path
+        }));
+        
+        allLenses.push(...lensesWithRepoInfo);
+        console.log(`Found ${lenses.length} lens(es) from ${config.repoUrl}`);
+      } catch (error) {
+        console.error(`Failed to get lenses from ${config.repoUrl}:`, error.message);
+        errors.push({
+          repoUrl: config.repoUrl,
+          error: error.message
+        });
+        // Continue processing other repos even if one fails
+      }
+    }
+
+    if (allLenses.length === 0 && errors.length > 0) {
+      throw new Error(
+        `Failed to retrieve lenses from any repository. Errors: ${
+          errors.map(e => `${e.repoUrl}: ${e.error}`).join('; ')
+        }`
+      );
+    }
+
+    return allLenses;
+  } catch (error) {
+    console.error('Error getting lenses:', error);
+    throw error;
+  }
+}
+
+/**
+ * Legacy function for backward compatibility
+ * Get all valid lenses from a single repository (deprecated, use getLenses() instead)
+ * @deprecated Use getLenses() which supports multi-repo configuration
  * @param {string} repoUrl - Git repository URL (from env)
  * @param {string} branch - Branch/tag (from env, optional)
  * @param {string} lensFilePath - Path to lens file (from env, optional)
+ * @returns {Promise<Array>} Array of valid lenses
+ */
+async function getLensesSingleRepo(repoUrl, branch, lensFilePath) {
+  if (!repoUrl) {
+    throw new Error('GIT_REPO_URL environment variable is required');
+  }
+
+  return getLensesFromRepo(repoUrl, branch, lensFilePath);
+}
+
+/**
+ * Get a specific lens by name from all configured repositories
  * @param {string} lensName - Name of the lens to retrieve
  * @returns {Promise<Object>} The lens object
  */
-async function getLensByName(repoUrl, branch, lensFilePath, lensName) {
-  const lenses = await getLenses(repoUrl, branch, lensFilePath);
+async function getLensByName(lensName) {
+  const lenses = await getLenses();
 
-  const lens = lenses.find((l) => l.name === lensName );
+  const lens = lenses.find((l) => l.name === lensName);
 
   if (!lens) {
     const error = new Error(`Lens '${lensName}' not found`);
@@ -93,14 +164,49 @@ async function getLensByName(repoUrl, branch, lensFilePath, lensName) {
 }
 
 /**
- * Get list of all lens names/IDs
+ * Legacy function for backward compatibility
+ * Get a specific lens by name from a single repository (deprecated)
+ * @deprecated Use getLensByName(lensName) which supports multi-repo configuration
+ * @param {string} repoUrl - Git repository URL (from env)
+ * @param {string} branch - Branch/tag (from env, optional)
+ * @param {string} lensFilePath - Path to lens file (from env, optional)
+ * @param {string} lensName - Name of the lens to retrieve
+ * @returns {Promise<Object>} The lens object
+ */
+async function getLensByNameSingleRepo(repoUrl, branch, lensFilePath, lensName) {
+  const lenses = await getLensesFromRepo(repoUrl, branch, lensFilePath);
+
+  const lens = lenses.find((l) => l.name === lensName);
+
+  if (!lens) {
+    const error = new Error(`Lens '${lensName}' not found`);
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return lens.lens;
+}
+
+/**
+ * Get list of all lens names/IDs from all configured repositories
+ * @returns {Promise<Array>} Array of lens IDs
+ */
+async function getLensNames() {
+  const lenses = await getLenses();
+  return lenses.map((l) => l.name);
+}
+
+/**
+ * Legacy function for backward compatibility
+ * Get list of all lens names/IDs from a single repository (deprecated)
+ * @deprecated Use getLensNames() which supports multi-repo configuration
  * @param {string} repoUrl - Git repository URL (from env)
  * @param {string} branch - Branch/tag (from env, optional)
  * @param {string} lensFilePath - Path to lens file (from env, optional)
  * @returns {Promise<Array>} Array of lens IDs
  */
-async function getLensNames(repoUrl, branch, lensFilePath) {
-  const lenses = await getLenses(repoUrl, branch, lensFilePath);
+async function getLensNamesSingleRepo(repoUrl, branch, lensFilePath) {
+  const lenses = await getLensesFromRepo(repoUrl, branch, lensFilePath);
   return lenses.map((l) => l.name);
 }
 
@@ -113,7 +219,11 @@ function clearCache() {
 
 module.exports = {
   getLenses,
+  getLensesFromRepo,
+  getLensesSingleRepo,
   getLensByName,
+  getLensByNameSingleRepo,
   getLensNames,
+  getLensNamesSingleRepo,
   clearCache
 };

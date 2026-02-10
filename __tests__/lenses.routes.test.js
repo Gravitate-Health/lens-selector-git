@@ -46,15 +46,15 @@ describe('Lenses API Routes', () => {
       expect(response.body.message).toContain('Repository not found');
     });
 
-    test('handles missing GIT_REPO_URL', async () => {
-      getLensNames.mockRejectedValue(new Error('GIT_REPO_URL environment variable is required'));
+    test('handles configuration errors', async () => {
+      getLensNames.mockRejectedValue(new Error('No repository configuration found'));
 
       const response = await request(app).get('/lenses');
 
       expect(response.status).toBe(500);
       expect(response.body).toHaveProperty('error');
       expect(response.body).toHaveProperty('message');
-      expect(response.body.message).toContain('GIT_REPO_URL');
+      expect(response.body.message).toContain('No repository configuration found');
     });
   });
 

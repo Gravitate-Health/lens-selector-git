@@ -9,29 +9,49 @@
 │  ┌──────────────────┐        ┌──────────────────┐               │
 │  │   Git Repository │        │   Client Apps    │               │
 │  │   (Lenses)       │        │   (Web, Mobile)  │               │
-│  └────────┬─────────┘        └────────┬─────────┘               │
+│  │   - Repo 1       │        └────────┬─────────┘               │
+│  │   - Repo 2       │                 │                          │
+│  │   - Repo N       │                 │                          │
+│  └────────┬─────────┘                 │                          │
 │           │                           │                          │
 └───────────┼───────────────────────────┼──────────────────────────┘
             │                           │
             │ Clone/Pull                │ HTTP/REST
+            │ (Parallel)                │
             │                           │
 ┌───────────┼───────────────────────────┼──────────────────────────┐
 │           ▼                           ▼                          │
 │  ┌─────────────────────────────────────────────────┐            │
 │  │     Lens Selector Service (Node.js/Express)    │            │
+│  │          Multi-Repository Support               │            │
 │  │                                                 │            │
 │  │  ┌─────────────────────────────────────────┐   │            │
 │  │  │         Express Routes                  │   │            │
 │  │  │  - GET /health                          │   │            │
-│  │  │  - GET /lenses                          │   │            │
-│  │  │  - GET /lenses/{name}                   │   │            │
+│  │  │  - GET /lenses (all repos)              │   │            │
+│  │  │  - GET /lenses/{name} (any repo)        │   │            │
 │  │  └──────────────┬──────────────────────────┘   │            │
 │  │                 │                               │            │
 │  │  ┌──────────────▼──────────────────────────┐   │            │
 │  │  │   Lens Service                          │   │            │
-│  │  │  - getLenses()                          │   │            │
-│  │  │  - getLensByName()                      │   │            │
-│  │  │  - Cache Management (5 min TTL)         │   │            │
+│  │  │  - getLenses() (multi-repo)             │   │            │
+│  │  │  - getLensesFromRepo() (single)         │   │            │
+│  │  │  - getLensByName() (search all)         │   │            │
+│  │  │  - Cache Management (per repo)          │   │            │
+│  │  └──────────────┬──────────────────────────┘   │            │
+│  │                 │                               │            │
+│  │  ┌──────────────▼──────────────────────────┐   │            │
+│  │  │   Repo Config Parser                    │   │            │
+│  │  │  - parseRepoConfig()                    │   │            │
+│  │  │  - getAllRepoConfigs()                  │   │            │
+│  │  │  - Supports: JSON/File/URL              │   │            │
+│  │  └──────────────┬──────────────────────────┘   │            │
+│  │                 │                               │            │
+│  │  ┌──────────────▼──────────────────────────┐   │            │
+│  │  │   Repo Manager                          │   │            │
+│  │  │  - ensureMultipleRepos()                │   │            │
+│  │  │  - ensureRepo() (per repo)              │   │            │
+│  │  │  - getRepoCacheKey()                    │   │            │
 │  │  └──────────────┬──────────────────────────┘   │            │
 │  │                 │                               │            │
 │  │  ┌──────────────▼──────────────────────────┐   │            │
@@ -41,7 +61,6 @@
 │  │  │  - findJsonFiles()                      │   │            │
 │  │  │  - findEnhanceFiles()                   │   │            │
 │  │  │  - jsToBase64()                         │   │            │
-│  │  │  - ensureRepo()                         │   │            │
 │  │  └──────────────┬──────────────────────────┘   │            │
 │  │                 │                               │            │
 │  └─────────────────┼───────────────────────────────┘            │
@@ -51,92 +70,112 @@
 │     ▼              ▼                           ▼                │
 │  ┌────────────────────────┐  ┌──────────────────────────┐      │
 │  │  File System           │  │  Environment Variables   │      │
-│  │  /tmp/lens-repos/      │  │  - GIT_REPO_URL          │      │
-│  │  (Git clones)          │  │  - GIT_BRANCH            │      │
-│  │  (Cache)               │  │  - LENS_FILE_PATH        │      │
-│  │                        │  │  - PORT                  │      │
+│  │  /tmp/lens-repos/      │  │  - REPOS_CONFIG          │      │
+│  │  ├─ repo1/             │  │  - GIT_REPO_URL (legacy) │      │
+│  │  ├─ repo2/             │  │  - GIT_BRANCH (legacy)   │      │
+│  │  └─ repoN/             │  │  - LENS_FILE_PATH        │      │
+│  │  (Git clones)          │  │  - PORT                  │      │
 │  └────────────────────────┘  └──────────────────────────┘      │
 │                                                                   │
 │  ┌───────────────────────────────────────────────────────────┐  │
-│  │  In-Memory Cache                                          │  │
+│  │  In-Memory Cache (Per Repository)                        │  │
 │  │  Map: {repoUrl:branch:path => {lenses, timestamp}}       │  │
-│  │  TTL: 5 minutes                                           │  │
+│  │  TTL: 5 minutes (configurable)                           │  │
 │  └───────────────────────────────────────────────────────────┘  │
 │                                                                   │
 └───────────────────────────────────────────────────────────────────┘
 ```
 
-## Data Flow: Discover Lenses
+## Data Flow: Discover Lenses (Multi-Repo Mode)
 
 ```
 Client Request
       │
       ▼
-GET /lenses
+GET /lenses or /lenses/:name
       │
       ▼
-lensService.getLensNames()
+lensService.getLenses() or getLensByName()
       │
       ▼
-Check Cache ─────────────► Hit ──────────► Return Cached
-      │                                    Lens Names
-      │ Miss                               
-      │
-      ▼
-lensService.getLenses()
-      │
-      ▼
-Call discoverLenses()
-      │
-      ▼
-ensureRepo()
-  ├─► Check if repo exists locally
-  ├─► If not: git clone
-  └─► If yes: git fetch + git pull
-      │
-      ▼
-If LENS_FILE_PATH specified:
-  └─► Use specific file path
-      │
-      ▼
-If NOT specified:
-  └─► findJsonFiles() ─► Recursively scan directory
-      │
-      ▼
-For each JSON file:
+getAllRepoConfigs()
+  ├─► Parse REPOS_CONFIG (if set)
+  │   ├─► Inline JSON?
+  │   ├─► File path? ─► Read from disk
+  │   └─► URL? ─► Fetch from remote
   │
-  ├─► Parse JSON
+  ├─► Parse legacy env vars (if set)
+  │   └─► GIT_REPO_URL, GIT_BRANCH, LENS_FILE_PATH
   │
-  ├─► validateFHIRLens(jsonData)
-  │   │
-  │   ├─► Valid? ──► Add to results
-  │   │
-  │   └─► Invalid?
-  │       │
-  │       ├─► Check if missing only base64 content
-  │       │
-  │       ├─► If yes: findEnhanceFiles()
-  │       │   │
-  │       │   └─► Found JS with enhance function?
-  │       │       │
-  │       │       ├─► Yes: jsToBase64() ─► Add content
-  │       │       │   │
-  │       │       │   └─► Revalidate ─► Add to results
-  │       │       │
-  │       │       └─► No: Skip file
-  │       │
-  │       └─► Log error & skip
-  │
-  └─► Continue next file
+  └─► Merge and deduplicate
       │
       ▼
-Return valid lenses array
+For each repository config:
       │
       ▼
-Store in Cache
+  getLensesFromRepo(repoUrl, branch, path)
       │
       ▼
-Return Lens Names
+  Check Cache ─────────────► Hit ──────────► Return Cached
+      │                                      Lenses for this repo
+      │ Miss
+      │
+      ▼
+  ensureRepo(repoUrl, branch, localPath)
+    ├─► Check if repo exists locally
+    ├─► If not: git clone
+    └─► If yes: git fetch + git pull
+      │
+      ▼
+  If LENS_FILE_PATH specified:
+    └─► Use specific file path
+      │
+      ▼
+  If NOT specified:
+    └─► findJsonFiles() ─► Recursively scan directory
+      │
+      ▼
+  For each JSON file:
+    │
+    ├─► Parse JSON
+    │
+    ├─► validateFHIRLens(jsonData)
+    │   │
+    │   ├─► Valid? ──► Add to results
+    │   │
+    │   └─► Invalid?
+    │       │
+    │       ├─► Check if missing only base64 content
+    │       │
+    │       ├─► If yes: findEnhanceFiles()
+    │       │   │
+    │       │   └─► Found JS with enhance function?
+    │       │       │
+    │       │       ├─► Yes: jsToBase64() ─► Add content
+    │       │       │   │
+    │       │       │   └─► Revalidate ─► Add to results
+    │       │       │
+    │       │       └─► No: Skip file
+    │       │
+    │       └─► Log error & skip
+    │
+    └─► Continue next file
+      │
+      ▼
+  Add repository metadata to lenses
+    (sourceRepo, sourceBranch, sourcePath)
+      │
+      ▼
+  Store in Cache (per repo)
+      │
+      ▼
+  Return lenses for this repo
+      │
+      ▼
+Aggregate lenses from all repos
+      │
+      ▼
+Return combined lens list or specific lens
       │
       ▼
 JSON Response
@@ -322,16 +361,16 @@ Return to client
 Request arrives
       │
       ▼
-Generate cache key: "repo:branch:path"
+Generate cache key: "repo:branch:path" (per repository)
       │
       ▼
 Look up in memory cache
       │
       ├─► Not in cache?
       │   │
-      │   ├─► Discover lenses
+      │   ├─► Discover lenses for this repo
       │   │
-      │   ├─► Store in cache
+      │   ├─► Store in cache with repo key
       │   │
       │   ├─► Record timestamp
       │   │
@@ -339,7 +378,7 @@ Look up in memory cache
       │
       └─► In cache?
           │
-          ├─► Check age < 5 minutes?
+          ├─► Check age < TTL (default 5 minutes)?
           │   │
           │   ├─► Yes: Return cached lenses
           │   │
@@ -350,7 +389,53 @@ Look up in memory cache
           └─► Return lenses
       │
       ▼
+Aggregate across all repos (if multi-repo mode)
+      │
+      ▼
 Serve response
+```
+
+## Configuration Modes
+
+### Mode 1: Single Repository (Legacy)
+```
+Environment Variables:
+├── GIT_REPO_URL=https://github.com/org/repo.git
+├── GIT_BRANCH=main
+└── LENS_FILE_PATH=lens.json
+
+Behavior:
+└── Manages one repository
+```
+
+### Mode 2: Multi-Repository
+```
+Environment Variable:
+└── REPOS_CONFIG=[{...}, {...}]
+    │
+    ├── Inline JSON
+    ├── File path: /path/to/config.json
+    └── Remote URL: https://example.com/config.json
+
+Behavior:
+└── Manages multiple repositories
+    ├── Parallel cloning/updating
+    ├── Aggregated lens discovery
+    └── Independent caching per repo
+```
+
+### Mode 3: Combined (Legacy + Multi-Repo)
+```
+Environment Variables:
+├── REPOS_CONFIG=[{...}]
+├── GIT_REPO_URL=https://github.com/org/legacy.git
+└── GIT_BRANCH=main
+
+Behavior:
+└── Merges both configurations
+    ├── Processes all repos from REPOS_CONFIG
+    ├── Adds legacy repo if not duplicate
+    └── Returns aggregated lenses
 ```
 
 ---

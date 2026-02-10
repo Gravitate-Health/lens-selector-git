@@ -5,15 +5,11 @@ const router = express.Router();
 
 /**
  * GET /lenses
- * Returns all lens IDs
+ * Returns all lens IDs from all configured repositories
  */
 router.get('/', async (req, res) => {
   try {
-    const repoUrl = process.env.GIT_REPO_URL;
-    const branch = process.env.GIT_BRANCH;
-    const lensFile = process.env.LENS_FILE_PATH;
-
-    const lensNames = await getLensNames(repoUrl, branch, lensFile);
+    const lensNames = await getLensNames();
 
     res.json({
       lenses: lensNames
@@ -29,16 +25,13 @@ router.get('/', async (req, res) => {
 
 /**
  * GET /lenses/:name
- * Returns a specific lens
+ * Returns a specific lens from any configured repository
  */
 router.get('/:name', async (req, res) => {
   try {
     const { name } = req.params;
-    const repoUrl = process.env.GIT_REPO_URL;
-    const branch = process.env.GIT_BRANCH;
-    const lensFile = process.env.LENS_FILE_PATH;
 
-    const lens = await getLensByName(repoUrl, branch, lensFile, name);
+    const lens = await getLensByName(name);
 
     res.json(lens);
   } catch (error) {
