@@ -14,9 +14,10 @@ jest.mock('../src/utils/repoConfigParser', () => ({
   getAllRepoConfigs: jest.fn()
 }));
 
-const { getLenses, getLensesFromRepo, getLensByName, getLensNames, clearCache } = require('../src/services/lensService');
+const { getLenses, getLensesFromRepo, getLensByName, getLensNames, clearCache, forceUpdate, getCacheInfo } = require('../src/services/lensService');
 const { discoverLenses } = require('../src/utils/lensValidator');
 const { getAllRepoConfigs } = require('../src/utils/repoConfigParser');
+const { ensureMultipleRepos } = require('../src/utils/repoManager');
 
 describe('Lens Service', () => {
   beforeEach(() => {
@@ -289,6 +290,62 @@ describe('Lens Service', () => {
       const result3 = await getLenses();
       expect(result3.length).toEqual(2);
       expect(discoverLenses).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('forceUpdate', () => {
+    test('clears cache and updates all repositories', async () => {
+      const repoConfigs = [
+        { repoUrl: 'https://repo1.git', branch: 'main', path: null }
+      ];
+
+      getAllRepoConfigs.mockResolvedValue(repoConfigs);
+
+      ensureMultipleRepos.mockResolvedValue([
+        { repoUrl: 'https://repo1.git', branch: 'main', success: true }
+      ]);
+
+      const result = await forceUpdate();
+
+      expect(result).toHaveProperty('timestamp');
+      expect(result.total).toBe(1);
+      expect(result.successful).toBe(1);
+      expect(result.failed).toBe(0);
+      expect(getAllRepoConfigs).toHaveBeenCalled();
+      expect(ensureMultipleRepos).toHaveBeenCalled();
+    });
+
+    test('reports failures correctly', async () => {
+      const repoConfigs = [
+        { repoUrl: 'https://repo1.git', branch: 'main', path: null },
+        { repoUrl: 'https://repo2.git', branch: 'main', path: null }
+      ];
+
+      getAllRepoConfigs.mockResolvedValue(repoConfigs);
+
+      ensureMultipleRepos.mockResolvedValue([
+        { repoUrl: 'https://repo1.git', branch: 'main', success: true },
+        { repoUrl: 'https://repo2.git', branch: 'main', success: false, error: 'Clone failed' }
+      ]);
+
+      const result = await forceUpdate();
+
+      expect(result.total).toBe(2);
+      expect(result.successful).toBe(1);
+      expect(result.failed).toBe(1);
+      expect(result.repositories[1].error).toBe('Clone failed');
+    });
+  });
+
+  describe('getCacheInfo', () => {
+    test('returns cache configuration', () => {
+      const cacheInfo = getCacheInfo();
+
+      expect(cacheInfo).toHaveProperty('ttlMinutes');
+      expect(cacheInfo).toHaveProperty('isInfinite');
+      expect(cacheInfo).toHaveProperty('cachedRepositories');
+      expect(typeof cacheInfo.ttlMinutes).toBe('number');
+      expect(typeof cacheInfo.isInfinite).toBe('boolean');
     });
   });
 });

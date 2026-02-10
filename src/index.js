@@ -3,6 +3,7 @@ const express = require('express');
 const lensesRouter = require('./routes/lenses');
 const { ensureMultipleRepos } = require('./utils/repoManager');
 const { getAllRepoConfigs } = require('./utils/repoConfigParser');
+const { forceUpdate, getCacheInfo } = require('./services/lensService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,6 +14,32 @@ app.use(express.json());
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'lens-selector' });
+});
+
+// Cache info endpoint
+app.get('/cache/info', (req, res) => {
+  const cacheInfo = getCacheInfo();
+  res.json(cacheInfo);
+});
+
+// Force update endpoint - clears cache and updates all repositories
+app.post('/update', async (req, res) => {
+  try {
+    console.log('Update endpoint called - triggering force update');
+    const result = await forceUpdate();
+    res.json({
+      status: 'success',
+      message: 'Repositories updated successfully',
+      ...result
+    });
+  } catch (error) {
+    console.error('Error in update endpoint:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to update repositories',
+      error: error.message
+    });
+  }
 });
 
 // API routes
@@ -53,6 +80,15 @@ app.listen(PORT, async () => {
       console.log(`  LENS_FILE_PATH: ${process.env.LENS_FILE_PATH || 'not set (will auto-discover)'}`);
     }
     
+    // Display cache configuration
+    const cacheInfo = getCacheInfo();
+    if (cacheInfo.isInfinite) {
+      console.log('\n  CACHE: INFINITE (updates disabled)');
+      console.log('  Use POST /update endpoint to manually trigger updates');
+    } else {
+      console.log(`\n  CACHE TTL: ${cacheInfo.ttlMinutes} minutes`);
+    }
+    
     // Get all repository configurations
     const repoConfigs = await getAllRepoConfigs();
     
@@ -65,7 +101,7 @@ app.listen(PORT, async () => {
       console.log(`    Branch: ${config.branch || 'default (main/master)'}`);
       console.log(`    Path: ${config.path || 'auto-discover'}`);
     });
-    
+
     console.log('\nCloning/updating repositories...');
     
     // Clone or update all repositories

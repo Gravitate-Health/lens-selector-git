@@ -6,11 +6,13 @@ jest.mock('../src/services/lensService', () => ({
   getLenses: jest.fn(),
   getLensByName: jest.fn(),
   getLensNames: jest.fn(),
-  clearCache: jest.fn()
+  clearCache: jest.fn(),
+  forceUpdate: jest.fn(),
+  getCacheInfo: jest.fn()
 }));
 
 const lensesRouter = require('../src/routes/lenses');
-const { getLenses, getLensByName, getLensNames, clearCache } = require('../src/services/lensService');
+const { getLenses, getLensByName, getLensNames, clearCache, forceUpdate, getCacheInfo } = require('../src/services/lensService');
 
 describe('Lenses API Routes', () => {
   let app;

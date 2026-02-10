@@ -30,6 +30,47 @@ Health check endpoint.
 }
 ```
 
+### GET /cache/info
+Returns cache configuration and status.
+
+**Response:**
+```json
+{
+  "ttlMinutes": 5,
+  "isInfinite": false,
+  "cachedRepositories": 3
+}
+```
+
+### POST /update
+Manually triggers repository updates and cache clearing. Useful for cron jobs when using infinite cache mode.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Repositories updated successfully",
+  "timestamp": "2026-02-10T10:00:00.000Z",
+  "total": 2,
+  "successful": 2,
+  "failed": 0,
+  "repositories": [
+    {
+      "repoUrl": "https://github.com/org/repo1.git",
+      "branch": "v1.0.0",
+      "success": true,
+      "error": null
+    },
+    {
+      "repoUrl": "https://github.com/org/repo2.git",
+      "branch": "v2.0.0",
+      "success": true,
+      "error": null
+    }
+  ]
+}
+```
+
 ### GET /lenses
 Returns all available lens IDs from all configured repositories.
 
@@ -217,6 +258,8 @@ This results in managing both repo1 and repo2.
 - `LENS_FILE_PATH`: Specific path to lens file for legacy single-repo mode (if not set, all JSON files are auto-discovered)
 - `PORT`: HTTP server port (defaults to 3000)
 - `CACHE_TTL_MINUTES`: Cache time-to-live in minutes (defaults to 5)
+  - Set to `-1` for infinite cache (recommended for tagged releases)
+  - When using infinite cache, repositories are only updated at startup and via POST /update endpoint
 - `LENS_REPOS_TEMP_DIR`: Temporary directory for cloned repositories (defaults to /tmp/lens-repos)
 
 ## Lens Discovery Logic
@@ -255,13 +298,41 @@ A valid lens must contain:
 
 The service maintains an in-memory cache of discovered lenses with a configurable TTL (Time To Live). By default, the cache is set to 5 minutes, which balances performance with data freshness. You can configure this via the `CACHE_TTL_MINUTES` environment variable.
 
-**Cache TTL**: Configurable via `CACHE_TTL_MINUTES` environment variable (default: 5 minutes)
+**Cache TTL**: Configurable via `CACHE_TTL_MINUTES` environment variable
+- Default: `5` minutes - Repositories are automatically updated when cache expires
 - Shorter TTL = more frequent repository updates, higher load
 - Longer TTL = better performance, potentially stale data
+- **Infinite cache**: Set to `-1` to disable automatic updates (recommended for tagged releases)
+
+### Infinite Cache Mode for Tagged Releases
+
+When all repositories point to specific Git tags (immutable releases), automatic updates are unnecessary. Configure infinite cache to optimize performance:
+
+```env
+CACHE_TTL_MINUTES=-1
+REPOS_CONFIG=[{"repoUrl":"https://github.com/org/repo.git","branch":"v1.0.0"}]
+```
+
+**Benefits**:
+- ✅ No unnecessary git fetch/pull operations
+- ✅ Faster response times (no cache expiration checks)
+- ✅ Repositories only cloned on startup
+- ✅ Manual control via POST /update endpoint
+
+**Update Strategy**:
+Instead of automatic updates on every request, use:
+- Manual trigger: `curl -X POST http://localhost:3000/update`
+- Cron job: Schedule periodic updates (e.g., daily)
+- CI/CD integration: Trigger after deploying new tags
+
+**Example cron job** (update daily at 2 AM):
+```bash
+0 2 * * * curl -X POST http://your-service/update
+```
 
 The cache is automatically invalidated based on the repository URL, branch, and lens file path.
 
-To clear the cache programmatically, restart the service.
+To clear the cache programmatically, use the POST /update endpoint or restart the service.
 
 ## Development
 

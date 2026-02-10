@@ -8,7 +8,10 @@ const fs = require('fs');
 const lensCache = new Map();
 
 // Get CACHE_TTL from environment, default to 5 minutes
-const CACHE_TTL = parseInt(process.env.CACHE_TTL_MINUTES || '5', 10) * 60 * 1000;
+// -1 means infinite cache (useful for tagged releases)
+const CACHE_TTL_MINUTES = parseInt(process.env.CACHE_TTL_MINUTES || '5', 10);
+const CACHE_TTL = CACHE_TTL_MINUTES === -1 ? -1 : CACHE_TTL_MINUTES * 60 * 1000;
+const IS_INFINITE_CACHE = CACHE_TTL === -1;
 
 /**
  * Get all valid lenses from a single repository
@@ -27,6 +30,12 @@ async function getLensesFromRepo(repoUrl, branch, lensFilePath) {
   // Check cache
   if (lensCache.has(cacheKey)) {
     const cached = lensCache.get(cacheKey);
+    // If infinite cache, always return cached value
+    if (IS_INFINITE_CACHE) {
+      console.log(`Returning cached lenses for ${repoUrl} (infinite cache)`);
+      return cached.lenses;
+    }
+    // Otherwise check TTL
     if (Date.now() - cached.timestamp < CACHE_TTL) {
       console.log(`Returning cached lenses for ${repoUrl}`);
       return cached.lenses;
@@ -212,9 +221,70 @@ async function getLensNamesSingleRepo(repoUrl, branch, lensFilePath) {
 
 /**
  * Clear the lens cache
+ * Useful for testing or when forcing a cache refresh
  */
 function clearCache() {
   lensCache.clear();
+  console.log('Lens cache cleared');
+}
+
+/**
+ * Force update all repositories and clear cache
+ * Useful for manual updates via API or cron jobs
+ * @returns {Promise<Object>} Update results
+ */
+async function forceUpdate() {
+  console.log('Force update triggered - clearing cache and updating repositories');
+  
+  // Clear cache
+  clearCache();
+  
+  try {
+    // Get all repo configurations
+    const repoConfigs = await getAllRepoConfigs();
+    
+    console.log(`Force updating ${repoConfigs.length} repository/repositories...`);
+    
+    // Update all repositories
+    const { ensureMultipleRepos } = require('../utils/repoManager');
+    const results = await ensureMultipleRepos(repoConfigs);
+    
+    // Separate successful and failed updates
+    const successful = results.filter(r => r.success);
+    const failed = results.filter(r => !r.success);
+    
+    const summary = {
+      timestamp: new Date().toISOString(),
+      total: results.length,
+      successful: successful.length,
+      failed: failed.length,
+      repositories: results.map(r => ({
+        repoUrl: r.repoUrl,
+        branch: r.branch,
+        success: r.success,
+        error: r.error || null
+      }))
+    };
+    
+    console.log(`Force update completed: ${successful.length}/${results.length} repositories updated successfully`);
+    
+    return summary;
+  } catch (error) {
+    console.error('Error during force update:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get cache configuration info
+ * @returns {Object} Cache configuration
+ */
+function getCacheInfo() {
+  return {
+    ttlMinutes: CACHE_TTL_MINUTES,
+    isInfinite: IS_INFINITE_CACHE,
+    cachedRepositories: lensCache.size
+  };
 }
 
 module.exports = {
@@ -225,5 +295,7 @@ module.exports = {
   getLensByNameSingleRepo,
   getLensNames,
   getLensNamesSingleRepo,
-  clearCache
+  clearCache,
+  forceUpdate,
+  getCacheInfo
 };

@@ -28,6 +28,8 @@
 │  │  ┌─────────────────────────────────────────┐   │            │
 │  │  │         Express Routes                  │   │            │
 │  │  │  - GET /health                          │   │            │
+│  │  │  - GET /cache/info                      │   │            │
+│  │  │  - POST /update (force refresh)         │   │            │
 │  │  │  - GET /lenses (all repos)              │   │            │
 │  │  │  - GET /lenses/{name} (any repo)        │   │            │
 │  │  └──────────────┬──────────────────────────┘   │            │
@@ -378,13 +380,17 @@ Look up in memory cache
       │
       └─► In cache?
           │
-          ├─► Check age < TTL (default 5 minutes)?
+          ├─► Infinite cache mode (TTL = -1)?
           │   │
-          │   ├─► Yes: Return cached lenses
+          │   ├─► Yes: Always return cached (never expires)
           │   │
-          │   └─► No: Remove from cache
+          │   └─► No: Check age < TTL (default 5 minutes)?
           │       │
-          │       └─► Discover lenses (start over)
+          │       ├─► Yes: Return cached lenses
+          │       │
+          │       └─► No: Remove from cache
+          │           │
+          │           └─► Discover lenses (start over)
           │
           └─► Return lenses
       │
@@ -393,6 +399,39 @@ Aggregate across all repos (if multi-repo mode)
       │
       ▼
 Serve response
+```
+
+## Manual Update Flow (POST /update)
+
+```
+POST /update request
+      │
+      ▼
+forceUpdate() service method
+      │
+      ├─► Clear all cache entries
+      │
+      ├─► Get all repo configurations
+      │
+      ├─► Call ensureMultipleRepos()
+      │   │
+      │   └─► For each repository:
+      │       ├─► git fetch origin
+      │       ├─► git checkout <branch/tag>
+      │       └─► git pull origin
+      │
+      ├─► Collect results (success/failure per repo)
+      │
+      └─► Return summary
+          │
+          ├─► timestamp
+          ├─► total repositories
+          ├─► successful count
+          ├─► failed count
+          └─► detailed results per repo
+      │
+      ▼
+JSON response to client
 ```
 
 ## Configuration Modes
