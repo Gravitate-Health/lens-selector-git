@@ -175,6 +175,136 @@ docker run -e GIT_REPO_URL=https://your-repo.git \
            lens-selector:latest
 ```
 
+## Kubernetes Deployment
+
+### Deploy via Helm (OCI Registry)
+
+The service can be deployed to Kubernetes using Helm charts published as OCI artifacts to GitHub Container Registry (ghcr.io).
+
+#### Deploy directly from the OCI registry (no cloning required)
+
+```bash
+# Login to GitHub Container Registry (if the repository is private)
+helm registry login ghcr.io -u YOUR_GITHUB_USERNAME
+
+# Install the chart with default values (all official lenses)
+helm install my-lens-selector oci://ghcr.io/gravitate-health/charts/lens-selector --version 0.1.0
+
+# Or install with custom values
+helm install my-lens-selector oci://ghcr.io/gravitate-health/charts/lens-selector \
+  --version 0.1.0 \
+  --set image.tag=v1.0.0 \
+  --set config.reposConfig="https://example.com/custom-lenses.json" \
+  --set config.cacheTtlMinutes=-1
+
+# Upgrade an existing deployment
+helm upgrade my-lens-selector oci://ghcr.io/gravitate-health/charts/lens-selector --version 0.1.0
+
+# Uninstall
+helm uninstall my-lens-selector
+```
+
+#### Key Configuration Options
+
+The service includes the required label `eu.gravitate-health.fosps.focusing: "true"` for service discovery within the cluster.
+
+Common Helm values to customize:
+
+```yaml
+# Image configuration
+image:
+  repository: ghcr.io/gravitate-health/lens-selector-git
+  tag: "v1.0.0"
+  pullPolicy: IfNotPresent
+
+# Number of replicas
+replicaCount: 2
+
+# Service configuration
+config:
+  reposConfig: "https://raw.githubusercontent.com/Gravitate-Health/gravitate-health.github.io/refs/heads/main/lenses.oficial.json"
+  cacheTtlMinutes: -1  # Infinite cache for tagged releases
+  port: 3000
+
+# Resource limits
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Enable ingress if needed
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: lens-selector.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+```
+
+#### Deploy with custom values file
+
+```bash
+# Create a custom values file
+cat > my-values.yaml <<EOF
+replicaCount: 3
+config:
+  reposConfig: "https://my-org.com/lenses.json"
+  cacheTtlMinutes: -1
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+EOF
+
+# Install with custom values
+helm install my-lens-selector oci://ghcr.io/gravitate-health/charts/lens-selector \
+  --version 0.1.0 \
+  -f my-values.yaml
+```
+
+### Local Development with Helm
+
+If you've cloned the repository and want to work with the chart locally:
+
+```bash
+# Validate the chart
+helm lint charts/lens-selector
+
+# Generate Kubernetes manifests without installing (dry-run)
+helm template my-lens-selector charts/lens-selector
+
+# Generate manifests with custom values
+helm template my-lens-selector charts/lens-selector \
+  --set config.cacheTtlMinutes=-1 \
+  --set image.tag=latest
+
+# Install from local chart
+helm install my-lens-selector charts/lens-selector
+
+# Package the chart (creates a .tgz file)
+helm package charts/lens-selector
+
+# Push to OCI registry (requires authentication)
+helm push lens-selector-0.1.0.tgz oci://ghcr.io/gravitate-health/charts
+```
+
+### Service Discovery
+
+The deployed service includes the label `eu.gravitate-health.fosps.focusing: "true"`, which enables automatic discovery by other components in the same Kubernetes cluster/namespace. Services can discover this endpoint using Kubernetes service discovery mechanisms:
+
+```bash
+# Access from within the same namespace
+curl http://my-lens-selector:3000/lenses
+
+# Or using the full DNS name
+curl http://my-lens-selector.default.svc.cluster.local:3000/lenses
+```
+
 ## Configuration
 
 ### Repository Configuration Modes
