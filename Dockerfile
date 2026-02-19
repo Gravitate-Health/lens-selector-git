@@ -1,9 +1,9 @@
-FROM node:18-alpine
+FROM node:22-slim
 
 WORKDIR /app
 
 # Install git (required by simple-git)
-RUN apk add --no-cache git
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 
 # Copy package files
 COPY package*.json ./
